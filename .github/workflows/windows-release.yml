@@ -24,6 +24,8 @@ jobs:
 
       - name: Configure Release SSE
         run: |
+          $env:CL = "/wd4505"
+          Add-Content $env:GITHUB_ENV 'CL=/wd4505'
           cmake -G "Visual Studio 18 2026" --preset=x64-release-windows-sse -B build -DBUILD_TESTING=OFF
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
