@@ -1,0 +1,61 @@
+name: Windows Release download
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/windows-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure Release SSE
+        run: |
+          cmake -G "Visual Studio 18 2026" --preset=x64-release-windows-sse -B build -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build game and launcher
+        run: |
+          cmake --build build --config Release --parallel 2 --target Alice launch_alice
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          foreach ($name in @('Alice.exe', 'launch_alice.exe')) {
+            $files = @(Get-ChildItem build -Recurse -File -Filter $name |
+              Where-Object { $_.FullName -match '[\\/]Release[\\/]' })
+            if ($files.Count -ne 1) {
+              throw "Expected one Release $name, found $($files.Count)"
+            }
+            Copy-Item $files[0].FullName dist
+          }
+          Copy-Item assets dist/assets -Recurse
+          Get-ChildItem libs -Filter *.dll -File |
+            Copy-Item -Destination dist
+          Get-ChildItem build -Recurse -Filter *.dll -File |
+            Where-Object { $_.FullName -match '[\\/]Release[\\/]' } |
+            Copy-Item -Destination dist
+          git rev-parse HEAD | Set-Content dist/COMMIT.txt
+          Copy-Item LICENSE dist
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project-Alice-Windows-x64-SSE
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
